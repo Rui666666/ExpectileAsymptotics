@@ -1,0 +1,351 @@
+---
+title: "Confidence Interval k-fold/batching G/G/1"
+output:
+  html_notebook: default
+date: '2024-01-30'
+---
+
+```{r, include=FALSE}
+rm(list = ls(all = TRUE))
+graphics.off()
+wdir = "/Users/LvB/Documents/! Expectile Asymptotics/!code"
+setwd(wdir)
+```
+
+```{r}
+library(VGAM)
+library(tidyverse)
+library(expectreg)
+library(xtable)
+library(Runuran)
+library(mosaic)
+library(mosaicCore)
+library(mosaicCalc)
+```
+
+M/M/1
+```{r}
+sim_mm1 = function(n, omega = 1, rho = 0.9)
+{
+  # Generate Bernoulli
+  B = rbinom(n, 1, rho)
+  # Generate exponential
+  X = rexp(n, omega*(1-rho))
+  # Generate steady-state random numbers of MM1
+  mm1 = B*X
+  # Return results
+  return(mm1)
+}
+
+## use a enough large sample to get true expectile
+time_start = Sys.time()
+tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
+set.seed(101)
+#M/M/1
+sample = sim_mm1(100000000)
+expectile_true = expectile(as.vector(sample), probs = tau_vec)
+time_end = Sys.time()
+time_dif = time_end - time_start
+time_dif
+expectile_true
+```
+
+M/H2/1
+```{r}
+# sim_mh21 = function(n, rho = 0.8, p = 0.8873, mu1 = 2.5*0.8873, mu2 = 2.5*(1-0.8873))
+# {
+#   # Generate a geometric
+#   N = rgeom(n, 1-rho)
+#   mh21 = rep(NA, n)
+#   for (i in 1:n) {
+#     if (N[i]==0){
+#       mh21[i] = 0
+#     }
+#     else{
+#       # Generate a binomial
+#       N1 = rbinom(1, size = N[i], prob = 1-p)
+#       N2 = N[i] - N1
+#       # Generate steady-state stationary waiting time
+#       X1 = rgamma(1, shape = N1, rate = mu1)
+#       X2 = rgamma(1, shape = N2, rate = mu2)
+#       mh21[i] = X1 + X2
+#     }
+#   }
+#   # Return result
+#   return(mh21)
+# }
+# 
+# ## use a enough large sample to get true expectile
+# time_start = Sys.time()
+# tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
+# set.seed(101)
+# #M/H2/1
+# sample = sim_mh21(100000000)
+# expectile_true = expectile(as.vector(sample), probs = tau_vec)
+# time_end = Sys.time()
+# time_dif = time_end - time_start
+# time_dif
+# expectile_true
+```
+
+M/G/1 
+```{r}
+# mypdf = function(x){
+#   mu = -1.374436
+#   sigma = 1.517427
+#   z = -(log(x)-mu)/sigma
+#   densityf = exp(-mu-sigma^2/2)*(1-1/2*erfc(z/sqrt(2)))
+#   #densityf = exp(-mu-sigma^2/2)*(1-1/2-1/2*erf(-z))
+#   return(densityf)
+# }
+# 
+# distr = pinv.new(pdf=mypdf, lb=0, ub=Inf)
+# 
+# sim_mg1 = function(N)
+# {
+#   x_mg1 = ur(distr, n = N)
+#   return(x_mg1)
+# }
+# 
+# time_start = Sys.time()
+# tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
+# set.seed(101)
+# sample = sim_mg1(100000000)
+# expectile_true = expectile(as.vector(sample), probs = tau_vec)
+# time_end = Sys.time()
+# time_dif = time_end - time_start
+# time_dif
+# expectile_true
+```
+
+k-fold method
+```{r}
+#number of batch: k
+#number of replications: Mrep
+#sample size: N
+fold = function(k,N,Mrep){
+  cv_vec_0.95 = c(12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262)
+  cv = cv_vec_0.95[k-1]
+  coverage_prob = rep(NA, length(tau_vec))
+  ci_low = rep(NA, length(tau_vec))
+  ci_high = rep(NA, length(tau_vec))
+  for (i in 1:length(tau_vec)) { 
+    tau = tau_vec[i]
+    ci = matrix(NA, nrow = Mrep, ncol = 2)
+    half_width = rep(NA, Mrep)
+    nrep = 0
+    for (mrep in 1:Mrep) {
+      set.seed(2*mrep + 1)
+      #simulate process
+      series = sim_mm1(round(N/k)*k)     # M/M/1
+      #series = sim_mh21(round(N/k)*k)    # M/H2/1
+      #series = sim_mg1(round(N/k)*k)     # M/G/1 
+      
+      indx = rep(1:k,each = round(N/k))  
+      series_list = split(series,indx)
+      expectile_split_list = lapply(series_list, expectile, probs = tau)
+      expectile_split = as.vector(unlist(expectile_split_list))
+      expectile_mean = mean(expectile_split)
+      sd = sqrt(sum((expectile_split-expectile_mean)^2)/(k-1)) 
+      lower = expectile_mean - cv*sd/sqrt(k)
+      upper = expectile_mean + cv*sd/sqrt(k)
+      ci[mrep,] = as.numeric(c(lower, upper))
+      half_width[mrep] = cv*sd/sqrt(k)
+      nrep = nrep + 1  
+    }
+    coverage_prob[i] = sum(expectile_true[i] >= ci[,1] & expectile_true[i] <= ci[,2])/Mrep
+    ci_low[i] = mean(ci[,1])
+    ci_high[i] = mean(ci[,2])
+  }
+  width = sqrt(N)*(ci_high - ci_low)/2
+  results = list()
+  results$prob = coverage_prob
+  results$width = width
+  return(results)
+}
+```
+
+```{r}
+time1 = Sys.time()
+k=2
+N=100
+results = fold(k,N,1000)
+width = matrix(NA,1,11)
+width[1,1]=k
+width[1,2]=N
+width[1,3:11] = results$width
+prob = matrix(NA,1,11)
+prob[1,1]=k
+prob[1,2]=N
+prob[1,3:11] = results$prob
+
+for (N in c(200,500,1000)){
+  results = fold(k,N,10000)
+  width_new = matrix(NA,1,11)
+  width_new[1,2]=N
+  width_new[1,3:11] = results$width
+  width =rbind(width,width_new)
+  prob_new = matrix(NA,1,11)
+  prob_new[1,2]=N
+  prob_new[1,3:11] = results$prob
+  prob =rbind(prob,prob_new)
+}
+```
+
+```{r}
+k=3
+N=100
+results = fold(k,N,1000)
+width_new = matrix(NA,1,11)
+width_new[1,1]=k
+width_new[1,2]=N
+width_new[1,3:11] = results$width
+width =rbind(width,width_new)
+prob_new = matrix(NA,1,11)
+prob_new[1,1]=k
+prob_new[1,2]=N
+prob_new[1,3:11] = results$prob
+prob =rbind(prob,prob_new)
+
+for (N in c(200,500,1000)){
+  results = fold(k,N,1000)
+  width_new = matrix(NA,1,11)
+  width_new[1,2]=N
+  width_new[1,3:11] = results$width
+  width =rbind(width,width_new)
+  prob_new = matrix(NA,1,11)
+  prob_new[1,2]=N
+  prob_new[1,3:11] = results$prob
+  prob =rbind(prob,prob_new)
+}
+```
+```{r}
+k=4
+N=100
+results = fold(k,N,1000)
+width_new = matrix(NA,1,11)
+width_new[1,1]=k
+width_new[1,2]=N
+width_new[1,3:11] = results$width
+width =rbind(width,width_new)
+prob_new = matrix(NA,1,11)
+prob_new[1,1]=k
+prob_new[1,2]=N
+prob_new[1,3:11] = results$prob
+prob =rbind(prob,prob_new)
+
+for (N in c(200,500,1000)){
+  results = fold(k,N,1000)
+  width_new = matrix(NA,1,11)
+  width_new[1,2]=N
+  width_new[1,3:11] = results$width
+  width =rbind(width,width_new)
+  prob_new = matrix(NA,1,11)
+  prob_new[1,2]=N
+  prob_new[1,3:11] = results$prob
+  prob =rbind(prob,prob_new)
+}
+```
+
+```{r}
+k=5
+N=100
+results = fold(k,N,1000)
+width_new = matrix(NA,1,11)
+width_new[1,1]=k
+width_new[1,2]=N
+width_new[1,3:11] = results$width
+width =rbind(width,width_new)
+prob_new = matrix(NA,1,11)
+prob_new[1,1]=k
+prob_new[1,2]=N
+prob_new[1,3:11] = results$prob
+prob =rbind(prob,prob_new)
+
+for (N in c(200,500,1000)){
+  results = fold(k,N,1000)
+  width_new = matrix(NA,1,11)
+  width_new[1,2]=N
+  width_new[1,3:11] = results$width
+  width =rbind(width,width_new)
+  prob_new = matrix(NA,1,11)
+  prob_new[1,2]=N
+  prob_new[1,3:11] = results$prob
+  prob =rbind(prob,prob_new)
+}
+```
+
+```{r}
+k=6
+N=100
+results = fold(k,N,1000)
+width_new = matrix(NA,1,11)
+width_new[1,1]=k
+width_new[1,2]=N
+width_new[1,3:11] = results$width
+width =rbind(width,width_new)
+prob_new = matrix(NA,1,11)
+prob_new[1,1]=k
+prob_new[1,2]=N
+prob_new[1,3:11] = results$prob
+prob =rbind(prob,prob_new)
+
+for (N in c(200,500,1000)){
+  results = fold(k,N,1000)
+  width_new = matrix(NA,1,11)
+  width_new[1,2]=N
+  width_new[1,3:11] = results$width
+  width =rbind(width,width_new)
+  prob_new = matrix(NA,1,11)
+  prob_new[1,2]=N
+  prob_new[1,3:11] = results$prob
+  prob =rbind(prob,prob_new)
+}
+```
+
+```{r}
+k=10
+N=100
+results = fold(k,N,1000)
+width_new = matrix(NA,1,11)
+width_new[1,1]=k
+width_new[1,2]=N
+width_new[1,3:11] = results$width
+width =rbind(width,width_new)
+prob_new = matrix(NA,1,11)
+prob_new[1,1]=k
+prob_new[1,2]=N
+prob_new[1,3:11] = results$prob
+prob =rbind(prob,prob_new)
+
+for (N in c(200,500,1000)){
+  results = fold(k,N,1000)
+  width_new = matrix(NA,1,11)
+  width_new[1,2]=N
+  width_new[1,3:11] = results$width
+  width =rbind(width,width_new)
+  prob_new = matrix(NA,1,11)
+  prob_new[1,2]=N
+  prob_new[1,3:11] = results$prob
+  prob =rbind(prob,prob_new)
+}
+time2 = Sys.time()
+time2-time1
+```
+
+Empirical coverage probabilities for M/M/1
+```{r}
+colnames(prob) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
+xtable= xtable(prob,digits=c(0,0,0,rep(3,9)))
+print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
+```
+
+Halfwidths for M/M/1
+```{r}
+colnames(width) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
+xtable= xtable(width,digits=c(0,0,0,rep(3,9)))
+print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
+```
+
+
+
