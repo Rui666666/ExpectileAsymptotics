@@ -23,69 +23,43 @@ library(mosaicCore)
 library(mosaicCalc)
 ```
 
-M/M/1
+
+M/H2/1
 ```{r}
-sim_mm1 = function(n, omega = 1, rho = 0.9)
+sim_mh21 = function(n, rho = 0.8, p = 0.8873, mu1 = 2.5*0.8873, mu2 = 2.5*(1-0.8873))
 {
-  # Generate Bernoulli
-  B = rbinom(n, 1, rho)
-  # Generate exponential
-  X = rexp(n, omega*(1-rho))
-  # Generate steady-state random numbers of MM1
-  mm1 = B*X
-  # Return results
-  return(mm1)
+  # Generate a geometric
+  N = rgeom(n, 1-rho)
+  mh21 = rep(NA, n)
+  for (i in 1:n) {
+    if (N[i]==0){
+      mh21[i] = 0
+    }
+    else{
+      # Generate a binomial
+      N1 = rbinom(1, size = N[i], prob = 1-p)
+      N2 = N[i] - N1
+      # Generate steady-state stationary waiting time
+      X1 = rgamma(1, shape = N1, rate = mu1)
+      X2 = rgamma(1, shape = N2, rate = mu2)
+      mh21[i] = X1 + X2
+    }
+  }
+  # Return result
+  return(mh21)
 }
 
 ## use a enough large sample to get true expectile
 time_start = Sys.time()
 tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
 set.seed(101)
-#M/M/1
-sample = sim_mm1(100000000)
+#M/H2/1
+sample = sim_mh21(100000000)
 expectile_true = expectile(as.vector(sample), probs = tau_vec)
 time_end = Sys.time()
 time_dif = time_end - time_start
 time_dif
 expectile_true
-```
-
-M/H2/1
-```{r}
-# sim_mh21 = function(n, rho = 0.8, p = 0.8873, mu1 = 2.5*0.8873, mu2 = 2.5*(1-0.8873))
-# {
-#   # Generate a geometric
-#   N = rgeom(n, 1-rho)
-#   mh21 = rep(NA, n)
-#   for (i in 1:n) {
-#     if (N[i]==0){
-#       mh21[i] = 0
-#     }
-#     else{
-#       # Generate a binomial
-#       N1 = rbinom(1, size = N[i], prob = 1-p)
-#       N2 = N[i] - N1
-#       # Generate steady-state stationary waiting time
-#       X1 = rgamma(1, shape = N1, rate = mu1)
-#       X2 = rgamma(1, shape = N2, rate = mu2)
-#       mh21[i] = X1 + X2
-#     }
-#   }
-#   # Return result
-#   return(mh21)
-# }
-# 
-# ## use a enough large sample to get true expectile
-# time_start = Sys.time()
-# tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
-# set.seed(101)
-# #M/H2/1
-# sample = sim_mh21(100000000)
-# expectile_true = expectile(as.vector(sample), probs = tau_vec)
-# time_end = Sys.time()
-# time_dif = time_end - time_start
-# time_dif
-# expectile_true
 ```
 
 M/G/1 
@@ -137,8 +111,8 @@ fold = function(k,N,Mrep){
     for (mrep in 1:Mrep) {
       set.seed(2*mrep + 1)
       #simulate process
-      series = sim_mm1(round(N/k)*k)     # M/M/1
-      #series = sim_mh21(round(N/k)*k)    # M/H2/1
+      #series = sim_mm1(round(N/k)*k)     # M/M/1
+      series = sim_mh21(round(N/k)*k)    # M/H2/1
       #series = sim_mg1(round(N/k)*k)     # M/G/1 
       
       indx = rep(1:k,each = round(N/k))  
@@ -333,14 +307,14 @@ time2 = Sys.time()
 time2-time1
 ```
 
-Empirical coverage probabilities for M/M/1
+Empirical coverage probabilities for M/H2/1
 ```{r}
 colnames(prob) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
 xtable= xtable(prob,digits=c(0,0,0,rep(3,9)))
 print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
 ```
 
-Halfwidths for M/M/1
+Halfwidths for M/H2/1
 ```{r}
 colnames(width) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
 xtable= xtable(width,digits=c(0,0,0,rep(3,9)))

@@ -25,12 +25,12 @@ TAR with normal and t(3) innovations
 alpha = 0.5 #parameter of TAR
 df_t = 3 #degree of freedom
 
-simnlts = function(n, alpha, thr, sigma, burnin=100) # normal
-#simnlts = function(n, alpha, thr, df, burnin=100) # t distribution
+#simnlts = function(n, alpha, thr, sigma, burnin=100) # normal
+simnlts = function(n, alpha, thr, df, burnin=100) # t distribution
 {
   # Generate noise
-  e = rnorm(n+burnin, 0, sigma) #normal
-  #e = rt(n+burnin, df)  #t distribution
+  #e = rnorm(n+burnin, 0, sigma) #normal
+  e = rt(n+burnin, df)  #t distribution
   
   # Create space for y
   y = numeric(n+burnin)
@@ -55,52 +55,13 @@ time_start = Sys.time()
 # expectile level
 tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
 set.seed(101)
-sample_TAR = simnlts(100000000, alpha, thr = 0, sigma = 1) #normal
-#sample_TAR = simnlts(100000000, alpha, thr = 0, df = df_t) #t distribution
+#sample_TAR = simnlts(100000000, alpha, thr = 0, sigma = 1) #normal
+sample_TAR = simnlts(100000000, alpha, thr = 0, df = df_t) #t distribution
 expectile_true = expectile(as.vector(sample_TAR), probs = tau_vec)
 time_end = Sys.time()
 time_dif = time_end - time_start
 time_dif
 expectile_true 
-```
-
-
-```{r}
-#true value for TAR with normal innovation
-eq.sol=function(mu_tau, para)
-{
-  alpha = para[1]
-  tau = para[2]
-
-  density_TAR = function(x){
-    f_x = ((2*(1-alpha^2))/pi)^0.5*exp(-(1-alpha^2)*x^2/2)*pnorm(-alpha*x)
-    return(f_x)
-  }
-
-  inteq_TAR = function(y){
-    y*density_TAR(y)
-  }
-
-  inteq_TAR_posi = function(y){
-    (y-mu_tau)*density_TAR(y)
-  }
-
-  (2 * tau - 1)/(1-tau) * integrate(inteq_TAR_posi, mu_tau, Inf)$value + integrate(inteq_TAR, -Inf, Inf)$value - mu_tau
-}
-time_start = Sys.time()
-## true value
-expectile_true_vec = rep(NA, length(tau_vec))
-for (i in 1:length(tau_vec)) {
-  tau = tau_vec[i]
-  find.para = multiroot(eq.sol, start = 0.001, para = c(alpha, tau))
-  expectile_true = find.para$root
-  expectile_true_vec[i] = expectile_true
-}
-time_end = Sys.time()
-time_dif_1 = time_end - time_start
-time_dif_1
-expectile_true = expectile_true_vec 
-expectile_true
 ```
 
 k-fold method
@@ -109,8 +70,13 @@ k-fold method
 #number of replications: Mrep
 #sample size: N
 fold = function(k,N,Mrep){
-  cv_vec_0.95 = c(12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262)
+  # 0.95 CI
+  cv_vec_0.95 = qt(p = 0.05/2, df = c(1:9), lower.tail = FALSE)
   cv = cv_vec_0.95[k-1]
+  # 0.99 CI
+  # cv_vec_0.99 = qt(p = 0.01/2, df = c(1:9), lower.tail = FALSE)
+  # cv = cv_vec_0.99[k-1]
+  
   coverage_prob = rep(NA, length(tau_vec))
   ci_low = rep(NA, length(tau_vec))
   ci_high = rep(NA, length(tau_vec))
@@ -122,8 +88,8 @@ fold = function(k,N,Mrep){
     for (mrep in 1:Mrep) {
       set.seed(2*mrep + 1)
       #simulate process
-      series = simnlts(round(N/k)*k, alpha, thr = 0, sigma = 1) #normal innovation
-      #series = simnlts(round(N/k)*k, alpha, thr = 0, df = df_t) # t distribution
+      #series = simnlts(round(N/k)*k, alpha, thr = 0, sigma = 1) #normal innovation
+      series = simnlts(round(N/k)*k, alpha, thr = 0, df = df_t) # t distribution
       
       indx = rep(1:k,each = round(N/k))  
       series_list = split(series,indx)
@@ -153,7 +119,7 @@ fold = function(k,N,Mrep){
 time1 = Sys.time()
 k=2
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width = matrix(NA,1,11)
 width[1,1]=k
 width[1,2]=N
@@ -164,7 +130,7 @@ prob[1,2]=N
 prob[1,3:11] = results$prob
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,11)
   width_new[1,2]=N
   width_new[1,3:11] = results$width
@@ -179,7 +145,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=3
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,11)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -192,7 +158,7 @@ prob_new[1,3:11] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,11)
   width_new[1,2]=N
   width_new[1,3:11] = results$width
@@ -207,7 +173,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=4
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,11)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -220,7 +186,7 @@ prob_new[1,3:11] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,11)
   width_new[1,2]=N
   width_new[1,3:11] = results$width
@@ -235,7 +201,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=5
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,11)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -248,7 +214,7 @@ prob_new[1,3:11] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,11)
   width_new[1,2]=N
   width_new[1,3:11] = results$width
@@ -263,7 +229,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=6
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,11)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -276,7 +242,7 @@ prob_new[1,3:11] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,11)
   width_new[1,2]=N
   width_new[1,3:11] = results$width
@@ -291,7 +257,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=10
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,11)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -304,7 +270,7 @@ prob_new[1,3:11] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,11)
   width_new[1,2]=N
   width_new[1,3:11] = results$width

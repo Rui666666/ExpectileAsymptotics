@@ -60,7 +60,7 @@ k-fold method
 #number of replications: Mrep
 #sample size: N
 fold = function(k,N,Mrep){
-  cv_vec_0.95 = c(12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262)
+  cv_vec_0.95 = qt(p = 0.05/2, df = c(1:9), lower.tail = FALSE)
   cv = cv_vec_0.95[k-1]
   coverage_prob = rep(NA, length(tau_vec))
   ci_low = rep(NA, length(tau_vec))
@@ -104,7 +104,7 @@ time1 = Sys.time()
 k=2
 N=100
 s=11
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width = matrix(NA,1,s)
 width[1,1]=k
 width[1,2]=N
@@ -115,7 +115,7 @@ prob[1,2]=N
 prob[1,3:s] = results$prob
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,s)
   width_new[1,2]=N
   width_new[1,3:s] = results$width
@@ -130,7 +130,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=3
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,s)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -143,7 +143,7 @@ prob_new[1,3:s] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,s)
   width_new[1,2]=N
   width_new[1,3:s] = results$width
@@ -158,7 +158,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=4
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,s)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -171,7 +171,7 @@ prob_new[1,3:s] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,s)
   width_new[1,2]=N
   width_new[1,3:s] = results$width
@@ -186,7 +186,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=5
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,s)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -199,7 +199,7 @@ prob_new[1,3:s] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,s)
   width_new[1,2]=N
   width_new[1,3:s] = results$width
@@ -214,7 +214,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=6
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,s)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -227,7 +227,7 @@ prob_new[1,3:s] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,s)
   width_new[1,2]=N
   width_new[1,3:s] = results$width
@@ -242,7 +242,7 @@ for (N in c(200,500,1000)){
 ```{r}
 k=10
 N=100
-results = fold(k,N,Mrep=1000)
+results = fold(k,N,Mrep=10000)
 width_new = matrix(NA,1,s)
 width_new[1,1]=k
 width_new[1,2]=N
@@ -255,7 +255,7 @@ prob_new[1,3:s] = results$prob
 prob =rbind(prob,prob_new)
 
 for (N in c(200,500,1000)){
-  results = fold(k,N,Mrep=1000)
+  results = fold(k,N,Mrep=10000)
   width_new = matrix(NA,1,s)
   width_new[1,2]=N
   width_new[1,3:s] = results$width
@@ -270,13 +270,13 @@ time2-time1
 ```
 Empirical coverage probabilities for AR with t(3) innovation
 ```{r}
-colnames(prob) = c("$k$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
+colnames(prob) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
 xtable= xtable(prob,digits=c(0,0,0,rep(3,9)))
 print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
 ```
 Halfwidths for AR with t(3) innovation
 ```{r}
-colnames(width) = c("$k$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
+colnames(width) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
 xtable= xtable(width,digits=c(0,0,0,rep(3,9)))
 print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
 ```
