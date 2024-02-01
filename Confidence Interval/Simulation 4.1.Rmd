@@ -1,0 +1,343 @@
+---
+title: "Simulation"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## LRD
+Consider the linear process
+$$
+X_t = \sum_{i=0}^\infty a_i\varepsilon_{t-i}
+$$
+where $\varepsilon_t$ are iid standard normal, $a_0=1$, $a_n=n^{-\beta}$, $n\geq1$, $\beta = 0.55$. We simulate the sample path by truncating the summation up to $m=10^7$ terms, i.e. 
+$$
+\tilde{X}_t = \sum_{i=0}^m a_i\varepsilon_{t-i}
+$$
+
+We will use $\{\tilde{X}_t\}$ to approximate $\{X_t\}$. 
+```{r,echo=FALSE,warning=FALSE,message=FALSE}
+library(VGAM)
+library(expectreg)
+LRD_process = function(n,m,a,family = "normal",df=3){
+  # n: sample size
+  # m: total length of fft vectors
+  # a: ciculant vector
+  # family: "normal" or "t"
+  # return a bunch of LRD processes as a matrix form
+  if(family == "normal")
+    ep = rnorm(m,sd=1)
+  if(family == "t")
+    ep = rt(m,df=df)
+  a_c = c(a[1],rev(a[2:m]))
+  a_cm = fft(a_c)
+  ep_m = fft(ep)
+  f_m = a_cm*ep_m
+  W_m = Re(fft(f_m,inverse=T)/m)
+  nset = floor(m/n)
+  X = matrix(0, ncol = n, nrow=nset)
+  for(i in 1:nset)
+    X[i,] = W_m[((i-1)*n+1):(i*n)]
+  return(X)
+}
+
+AR1_process = function(n, phi, family = "normal", df=3){
+  Y = numeric(n)
+  if(family == "t"){
+    for (t in 2:n) 
+      Y[t] = phi * Y[t - 1] + rt(1, df=df)
+  }
+  if(family == "normal"){
+    for (t in 2:n) 
+      Y[t] = phi * Y[t - 1] + rnorm(1)
+  }
+  return(Y)
+}
+```
+
+
+## Parallel
+Choose $\alpha=0.1,0.2,\ldots,0.9$, and $n=10^4$, which requires $m=10^8$. Because the marginal distribution of $X_t$ is normal with variance $\sum_{i=0}^\infty a_i^2$, we can approximate $\theta _\alpha$ by the $\alpha$-expectile of $N(0,\sum_{i=0}^m a_i^2)$. We can show that the two curves are almost paralell.
+```{r,echo=F,warning=F,message=F}
+m = 10^8
+n = 10^4
+beta = 0.55
+set.seed(111)
+a = (1:m)^{-beta}
+X = LRD_process(n,m,a)
+alpha = seq(0.1,0.9,by=0.1)
+sigma = sqrt(sum(a^2))
+theta = qenorm(alpha,sd=sigma)
+theta_hat = expectile(X,alpha)
+plot(alpha, theta_hat, type="l", ylim=c(-5,5))
+lines(x = alpha, y = theta, col="red")
+```
+
+
+## Coverage rate of SCB
+The proposition claimed that $\bar{X}$ and $\hat{\theta}_\alpha - \theta_\alpha$ asymptotically has the same distribution for $\alpha\in (0,1)$. That means if we can determine the cut-off values $u_1$ and $u_2$ such that
+$$
+\mathbb{P}(u_1< \bar{X}< u_2)=1-0.05
+$$
+then 
+$$
+\mathbb{P}(u_1<\hat{\theta}_\alpha - \theta_\alpha<u_2,\ \text{for }\alpha\in(0,1))\approx 1-0.05
+$$
+which indicates $(\hat{\theta}_\alpha-u_1,\hat{\theta}_\alpha-u_2)$ would be an asymptomatic 0.95-SCB for $\theta_\alpha$, $\alpha\in(0,1)$. 
+
+Design: Generate a random vector ${\varepsilon} =(\varepsilon_m,\ldots,\varepsilon_0)$ of length $m+1$. Adjust the coefficients vector to be $a = (a_0,a_m,a_{m-1},\ldots,a_1)$. Compute the circular convolution $W = a \star\varepsilon=(w_0,w_1,\ldots,w_m)$ by FFT. Then we can generate $m/n$ sample paths of length $n$. Set $n=1000$ and $m=10^7$ and we can get $10^5$ sample paths $\{X_i^{(j)}\} = \{w_{n(j-1)+1},\ldots,w_{nj}\}$, $i=1,\ldots,1000$, $j=1,\ldots,10000$. From these samples, we can get sample means $\{\bar{X}^{j}\}$ to extract the cut-off values $\hat{u}_1$ and $\hat{u}_2$. For each sample path, check the coverage and conclude the coverage rate.
+
+```{r, message=TRUE, warning=TRUE}
+# calculate the true expectiles under different setting.
+AR1_expectile = function(phi=0.3, family = "normal",df=3 ,alpha=seq(0.1,0.9,0.1)){
+  if(family == "normal"){
+    return(qenorm(alpha,sd=sqrt(1/(1-phi^2))))
+  }
+  if(family == "t"){
+    Y = numeric(1000)
+    theta_hat = matrix(0,ncol=length(alpha),nrow=100000)
+    for(j in 1:100000){
+      theta_hat[j,] = expectile(AR1_process(n=1000,phi=phi,family = "t",df=df),alpha)
+  }
+    return(apply(theta_hat,2,mean))
+  }
+}
+
+lrd_expectile = function(beta = 0.55, family = "normal", df = 3, alpha = seq(0.1,0.9,0.1), repln =1000){
+  n =10^3
+  m = 10^7
+  iter = 10^4
+  a = (1:m)^{-beta}
+  theta = matrix(0,ncol=length(alpha),nrow=iter*repln)
+  for(i in 1:repln){
+    X = LRD_process(n=n,m=m,a=a,family=family,df=df)
+    for(j in 1:length(alpha))
+      theta[((i-1)*iter+1):(i*iter),j] = apply(X,1,expectile, probs=alpha[j])
+  }
+  return(apply(theta,2,mean))
+}
+
+theta_ar_n_0 =AR1_expectile(phi=0)
+theta_ar_n_05 = AR1_expectile(phi=0.5)
+theta_ar_n_09 = AR1_expectile(phi=0.9)
+theta_ar_t3_0 = AR1_expectile(phi=0,family="t")
+theta_ar_t3_05 = AR1_expectile(phi=0.5,family="t")
+theta_ar_t3_09 = AR1_expectile(phi=0.9,family="t")
+theta_ar_t3_03 = AR1_expectile(phi=0.3,family="t")
+theta_ar_t3_099 = AR1_expectile(phi=0.99,family="t")
+
+
+theta_norm_055 = lrd_expectile()
+#theta_norm_055 = c(-1.6510135, -1.0405665, -0.6236031, -0.2776046,  0.0415328,  0.3606711, 0.7066728,  1.1236442,  1.7341065) 
+# kinda bad
+theta_norm_070 = lrd_expectile(beta = 0.7)
+#theta_norm_070= c(-1.37731115, -0.88167344, -0.54441488, -0.26502193, -0.00749923, 0.25001929,  0.52939786,  0.86662529,  1.36219898)
+theta_t_3_055 = lrd_expectile(family = "t")
+#theta_t_3_055 = c(-2.86907065, -1.82630548, -1.13096322, -0.55952886, -0.03448679, 0.49055759,  1.06199757,  1.75734880,  2.80012001)
+theta_t_3_070 = lrd_expectile(beta=0.7, family="t")
+#theta_t_3_070 = c(-2.267763901, -1.423042798, -0.870433320, -0.419947743, -0.007386081, 0.405178066,  0.855672673,  1.408292094,  2.252981850)
+theta_t_4_055 = lrd_expectile(family = "t", df=4) # it takes about 4 hrs 
+#theta_t_4_055 = c(-2.38342620, -1.52003142, -0.93722469, -0.45595162, -0.01290404, 0.43014658,  0.91143026,  1.49425904,  2.35769950)
+theta_t_4_070 = lrd_expectile(beta=0.7,family="t",df=4)
+#theta_t_4_070 = c(-1.908946957, -1.206973431, -0.739387301, -0.355456339, -0.002843793, 0.349767569,  0.733693873,  1.201267034  1.903219848)
+theta_t_5_055 = lrd_expectile(family="t", df=5)
+#theta_t_5_055 = c(-2.15428122, -1.36510714, -0.83006940, -0.38746468,  0.02027017, 0.42800709,  0.87062020,  1.40567655,  2.19489980)
+theta_t_5_070 = lrd_expectile(beta=0.7, family="t", df=5)
+#theta_t_5_070 = c(-1.754554478, -1.112526394, -0.681846463, -0.327200420, -0.001107517, 0.324985413,  0.679632138,  1.110313393,  1.752343782)
+```
+
+```{r,echo=F, message=FALSE, warning=FALSE, r,echo=F}
+#check the coverage probability of SCB in LRD case
+coverage_mean = function(n=10^3, m=10^7, beta=0.55, iter=10^4, family = "normal", process = "ar1",phi=0.5, df = 3, theta = theta_ar_n_05, alpha =seq(0.1,0.9,by=0.1), method = 1){
+  #generate sample path
+  if(process == "ar1"){
+    X = matrix(0,ncol=n,nrow=iter)
+    for(i in 1:iter)
+      X[i,] = AR1_process(n=n,phi=phi,family=family,df=df)
+  }
+  if(process == "lrd"){
+    a = (1:m)^{-beta}
+    X = LRD_process(n=n,m=m,a=a,family = family, df=df)
+  }
+  
+  #expectiles
+  theta_hat = matrix(0,ncol=length(alpha), nrow = iter)
+  for(j in 1:length(alpha))
+    theta_hat[,j] = apply(X,1,expectile, probs=alpha[j])
+  #sample means
+  X_avg = apply(X, 1, mean)
+  u = quantile(X_avg, c(0.025,0.975))
+  avg_sd = sd(X_avg)
+  if(method == 1){
+    lower = theta_hat - u[2]
+    upper = theta_hat - u[1]
+  }
+  if(method == 2){
+    lower = theta_hat - avg_sd*1.96
+    upper = theta_hat + avg_sd*1.96
+  }
+  #coverage rate
+  count1 = apply(lower, 1, function(x){return(all(x<theta))})
+  count2 = apply(upper, 1, function(x){return(all(x>theta))})
+  prob = sum(count1*count2)/iter
+  return(prob)
+}
+
+coverage_mean(family="normal", phi=0,theta=theta_ar_n_0) #0.7971
+coverage_mean(family="normal", phi=0.3,theta=theta_ar_n_03) #0.8484
+coverage_mean(family="normal", phi=0.5,theta=theta_ar_n_05) # 0.8573
+coverage_mean(family="normal", phi=0.9,theta=theta_ar_n_09) #0.8708
+coverage_mean(family="normal", phi=0.99,theta=theta_ar_n_099)#0.8636
+
+
+coverage_mean(n=5000, family="normal", phi=0,theta=theta_ar_n_0) #0.797
+coverage_mean(n=5000, family="normal", phi=0.3,theta=theta_ar_n_03) #0.8466
+coverage_mean(n=5000, family="normal", phi=0.5,theta=theta_ar_n_05) # 0.8617
+coverage_mean(n=5000, family="normal", phi=0.9,theta=theta_ar_n_09) #0.8731
+
+
+coverage_mean(n=1000,family="t", phi=0, theta=theta_ar_t3_0) #0.4674
+coverage_mean(n=1000,family="t", phi=0.3, theta=theta_ar_t3_03) #0.5729
+coverage_mean(n=1000,family="t", phi=0.5, theta=theta_ar_t3_05) #0.6425
+coverage_mean(n=1000,family="t", phi=0.9, theta=theta_ar_t3_09) #0.7832
+coverage_mean(n=1000,family="t", phi=0.99, theta=theta_ar_t3_099) #0.8672
+
+coverage_mean(n=100,family="t", phi=0, theta=theta_ar_t3_0) #0.5296
+coverage_mean(n=100,family="t", phi=0.3, theta=theta_ar_t3_03)#0.6457
+coverage_mean(n=100,family="t", phi=0.5, theta=theta_ar_t3_05) #0.7035
+coverage_mean(n=100,family="t", phi=0.9, theta=theta_ar_t3_09) #0.8317
+coverage_mean(n=100,family="t", phi=0.99, theta=theta_ar_t3_099)#0.8478
+
+coverage_mean(n=500,family="t", phi=0, theta=theta_ar_t3_0) #0.4773
+coverage_mean(n=500,family="t", phi=0.3, theta=theta_ar_t3_03)#0.5942
+coverage_mean(n=500,family="t", phi=0.5, theta=theta_ar_t3_05) #0.6536
+coverage_mean(n=500,family="t", phi=0.9, theta=theta_ar_t3_09) #0.7994
+coverage_mean(n=500,family="t", phi=0.99, theta=theta_ar_t3_099) #0.8868
+###
+
+coverage_mean(n=5000,family="t", phi=0, theta=theta_ar_t3_0) #0.4773
+coverage_mean(n=5000,family="t", phi=0.3, theta=theta_ar_t3_03)#0.5942
+coverage_mean(n=5000,family="t", phi=0.5, theta=theta_ar_t3_05) #0.6536
+coverage_mean(n=5000,family="t", phi=0.9, theta=theta_ar_t3_09) #0.7994
+
+
+
+coverage_mean(n=500,iter=2*10^4,process = "lrd", family = "normal", theta=theta_norm_055)#0.9378
+coverage_mean(n=500,iter=2*10^4,process = "lrd", family = "normal",beta=0.7, theta=theta_norm_070) # 0.9336
+
+coverage_mean(n=5000,iter=2*10^4,process = "lrd", family = "normal", theta=theta_norm_055)#0.9378
+coverage_mean(n=5000,iter=2*10^4,process = "lrd", family = "normal",beta=0.7, theta=theta_norm_070) # 0.9336
+
+coverage_mean(process = "lrd", family = "normal", theta=theta_norm_055)#0.9378
+coverage_mean(process = "lrd", family = "normal",beta=0.7, theta=theta_norm_070) # 0.9336
+coverage_mean(process = "lrd", family = "t", theta=theta_t_3_055) # 0.9356
+coverage_mean(process = "lrd", family = "t",beta=0.7 , theta=theta_t_3_070) #0.917
+
+coverage_mean(n = 100, iter=10^5,process = "lrd", family = "t", theta=theta_t_3_055) # 0.9356
+coverage_mean(n = 100, iter=10^5,process = "lrd", family = "t",beta=0.7 , theta=theta_t_3_070) #0.917
+
+coverage_mean(n = 500, iter=2*10^4,process = "lrd", family = "t", theta=theta_t_3_055) # 0.9356
+coverage_mean(n = 500, iter=2*10^4,process = "lrd", family = "t",beta=0.7 , theta=theta_t_3_070) #0.917
+
+coverage_mean(n = 5000,m=10^8, iter=2*10^4,process = "lrd", family = "t", theta=theta_t_3_055) # 0.9356
+coverage_mean(n = 5000, m=10^8, iter=2*10^4,process = "lrd", family = "t",beta=0.7 , theta=theta_t_3_070) #0.917
+
+
+```
+
+
+## Corollary 1.1: k-fold method
+
+Consider AR(1) model with standard normal innovation. Set $n=500$, $d = 5$, $\gamma=0.05$, and $\alpha=0.10,0.11,0.12,0.13,\ldots,0.89,0.90$. Then the uniform coverage probability of $\bar{\theta}_\alpha\pm d^{-1/2}\hat{\sigma}_{\alpha,d}t_{d-1,1-\gamma/2}$ for $0.1\leq\alpha\leq 0.9$ is 0.8801 for $\phi=0.5$ and 0.8554 for $\phi=0.9$. Apply the same approximation approach for LRD linear process. Then we have 0.3215 and 0.5548 coverage probability for $\beta=0.55$ and $\beta = 0.7$.
+
+```{r message=FALSE, warning=FALSE}
+Corollary11 = function(n=500,d=5,family="normal",phi=0.5,gamma=0.05,theta,alpha){
+  X = AR1_process(n=n,phi=phi,family=family)
+  X = matrix(X, nrow =n/d, ncol =d)
+  
+  theta_hat = matrix(0,nrow = length(alpha),ncol=d)
+  for(j in 1:d){
+    theta_hat[,j] = expectile(X[,j],alpha)
+  }
+  sd_hat = apply(theta_hat,1,sd)
+  theta_mean = apply(theta_hat,1,mean)
+  cover = abs(sqrt(d)*(theta_mean-theta)/sd_hat)<qt(1-gamma/2,df=d-1)
+  return(cover)
+}
+
+Coverage_Cor11 = function(n=500,d=5,phi=0.5, family="normal",gamma=0.05,theta,iter=10000,alpha=seq(0.1,0.9,0.1)){
+  len_alpha = length(alpha)
+  count = numeric(len_alpha+1)
+  for(i in 1:iter){
+    cover = Corollary11(n=n,d=d,phi=phi,family=family,gamma=gamma,theta=theta,alpha=alpha)
+    count[len_alpha+1] = count[len_alpha+1] + all(cover)
+    count[1:len_alpha] = count[1:len_alpha] + cover
+  }
+  return(count/iter)
+}
+
+Coverage_Cor11(phi=0,theta=qenorm(alpha,sd=1),alpha=alpha) # 0.8598
+Coverage_Cor11(phi=0.99,theta=qenorm(alpha,sd=sqrt(1/(1-0.99^2))),alpha=alpha) # 0.4118
+Coverage_Cor11(n=150,d=5,alpha=alpha,theta=theta_ar_n_05) #0.8632
+Coverage_Cor11(n=150,d=6,alpha=alpha,theta=theta_ar_n_05) #0.8598
+Coverage_Cor11(n=600,d=6,alpha=alpha,theta=theta_ar_n_05) # 0.8863
+Coverage_Cor11(n=600,d=5,alpha=alpha,theta=theta_ar_n_05) # 0.8829
+Coverage_Cor11(n=600,d=5,alpha=alpha,theta=theta_ar_n_05) # 0.8765
+Coverage_Cor11(n=600,d=6,alpha=alpha,theta=theta_ar_n_05) # 0.8622
+Coverage_Cor11(d=6,alpha=alpha,theta=theta_ar_n_05) # 0.8604
+Coverage_Cor11(phi=0.9,alpha=alpha,theta=theta_ar_n_05) # 0.8551
+Coverage_Cor11(alpha=alpha,theta=theta_ar_n_05) # 0.8786
+
+Coverage_Cor11(n=100,d=5,phi=0,alpha=alpha,theta=theta_ar_n_0)
+Coverage_Cor11(n=100,d=5,phi=0.3,alpha=alpha,theta=theta_ar_n_03)
+Coverage_Cor11(n=100,d=5,phi=0.5,alpha=alpha,theta=theta_ar_n_05)
+Coverage_Cor11(n=100,d=5,phi=0.9,alpha=alpha,theta=theta_ar_n_09)
+Coverage_Cor11(n=100,d=5,phi=0.99,alpha=alpha,theta=theta_ar_n_099)
+
+Coverage_Cor11(n=500,d=5,phi=0,alpha=alpha,theta=theta_ar_n_0)
+Coverage_Cor11(n=500,d=5,phi=0.3,alpha=alpha,theta=theta_ar_n_03)
+Coverage_Cor11(n=500,d=5,phi=0.5,alpha=alpha,theta=theta_ar_n_05)
+Coverage_Cor11(n=500,d=5,phi=0.9,alpha=alpha,theta=theta_ar_n_09)
+Coverage_Cor11(n=500,d=5,phi=0.99,alpha=alpha,theta=theta_ar_n_099)
+
+Coverage_Cor11(n=1000,d=5,phi=0,alpha=alpha,theta=theta_ar_n_0)
+Coverage_Cor11(n=1000,d=5,phi=0.3,alpha=alpha,theta=theta_ar_n_03)
+Coverage_Cor11(n=1000,d=5,phi=0.5,alpha=alpha,theta=theta_ar_n_05)
+Coverage_Cor11(n=1000,d=5,phi=0.9,alpha=alpha,theta=theta_ar_n_09)
+Coverage_Cor11(n=1000,d=5,phi=0.99,alpha=alpha,theta=theta_ar_n_099)
+
+Coverage_Cor11(n=5000,d=5,phi=0,alpha=alpha,theta=theta_ar_n_0)
+Coverage_Cor11(n=5000,d=5,phi=0.3,alpha=alpha,theta=theta_ar_n_03)
+Coverage_Cor11(n=5000,d=5,phi=0.5,alpha=alpha,theta=theta_ar_n_05)
+Coverage_Cor11(n=5000,d=5,phi=0.9,alpha=alpha,theta=theta_ar_n_09)
+
+
+Coverage_Cor11(n=100,d=5,phi=0,family="t",alpha=alpha,theta=theta_ar_t3_0)
+Coverage_Cor11(n=100,d=5,phi=0.3,family="t",alpha=alpha,theta=theta_ar_t3_03)
+Coverage_Cor11(n=100,d=5,phi=0.5,family="t",alpha=alpha,theta=theta_ar_t3_05)
+Coverage_Cor11(n=100,d=5,phi=0.9,family="t",alpha=alpha,theta=theta_ar_t3_09)
+Coverage_Cor11(n=100,d=5,phi=0.99,family="t",alpha=alpha,theta=theta_ar_t3_099)
+
+Coverage_Cor11(n=500,d=5,phi=0,family="t",alpha=alpha,theta=theta_ar_t3_0)
+Coverage_Cor11(n=500,d=5,phi=0.3,family="t",alpha=alpha,theta=theta_ar_t3_03)
+Coverage_Cor11(n=500,d=5,phi=0.5,family="t",alpha=alpha,theta=theta_ar_t3_05)
+Coverage_Cor11(n=500,d=5,phi=0.9,family="t",alpha=alpha,theta=theta_ar_t3_09)
+Coverage_Cor11(n=500,d=5,phi=0.99,family="t",alpha=alpha,theta=theta_ar_t3_099)
+
+Coverage_Cor11(n=1000,d=5,phi=0,family="t",alpha=alpha,theta=theta_ar_t3_0)
+Coverage_Cor11(n=1000,d=5,phi=0.3,family="t",alpha=alpha,theta=theta_ar_t3_03)
+Coverage_Cor11(n=1000,d=5,phi=0.5,family="t",alpha=alpha,theta=theta_ar_t3_05)
+Coverage_Cor11(n=1000,d=5,phi=0.9,family="t",alpha=alpha,theta=theta_ar_t3_09)
+Coverage_Cor11(n=1000,d=5,phi=0.99,family="t",alpha=alpha,theta=theta_ar_t3_099)
+
+
+Coverage_Cor11(n=5000,d=5,phi=0,family="t",alpha=alpha,theta=theta_ar_t3_0)
+Coverage_Cor11(n=5000,d=5,phi=0.3,family="t",alpha=alpha,theta=theta_ar_t3_03)
+Coverage_Cor11(n=5000,d=5,phi=0.5,family="t",alpha=alpha,theta=theta_ar_t3_05)
+Coverage_Cor11(n=5000,d=5,phi=0.9,family="t",alpha=alpha,theta=theta_ar_t3_09)
+Coverage_Cor11(n=5000,d=5,phi=0.99,family="t",alpha=alpha,theta=theta_ar_t3_099)
+```
+
+
