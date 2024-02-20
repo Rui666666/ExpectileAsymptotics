@@ -20,7 +20,7 @@ library(xtable)
 library(rootSolve)
 ```
 
-TAR with normal and t(3) innovations
+TAR with t(3) innovations
 ```{r}
 alpha = 0.5 #parameter of TAR
 df_t = 3 #degree of freedom
@@ -71,14 +71,11 @@ k-fold method
 #sample size: N
 fold = function(k,N,Mrep){
   # 0.95 CI
-  # cv_vec_0.95 = qt(p = 0.05/2, df = c(1:9), lower.tail = FALSE)
-  # cv = cv_vec_0.95[k-1]
+  cv_vec_0.95 = qt(p = 0.05/2, df = c(1:9), lower.tail = FALSE)
+  cv = cv_vec_0.95[k-1]
   # 0.99 CI
-  cv_vec_0.99 = qt(p = 0.01/2, df = c(1:9), lower.tail = FALSE)
-  cv = cv_vec_0.99[k-1]
-  # 0.999 CI
-  cv_vec_0.99 = qt(p = 0.001/2, df = c(1:9), lower.tail = FALSE)
-  cv = cv_vec_0.99[k-1]
+  # cv_vec_0.99 = qt(p = 0.01/2, df = c(1:9), lower.tail = FALSE)
+  # cv = cv_vec_0.99[k-1]
   
   coverage_prob = rep(NA, length(tau_vec))
   ci_low = rep(NA, length(tau_vec))
@@ -286,16 +283,16 @@ for (N in c(200,500,1000)){
 time2 = Sys.time()
 time2-time1
 ```
-Empirical coverage probabilities for TAR with normal innovation
+Empirical coverage probabilities for TAR with t(3) innovations
 ```{r}
 colnames(prob) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
-xtable= xtable(prob,digits=c(0,0,0,rep(4,9)))
+xtable= xtable(prob,digits=c(0,0,0,rep(3,9)))
 print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
 ```
-Halfwidths for TAR with normal innovation
+Halfwidths for TAR with t(3) innovations
 ```{r}
 colnames(width) = c("$d$", "$n$", "$\\alpha=0.1$", "0.2", "0.3","0.4","0.5","0.6","0.7","0.8","0.9")
-xtable= xtable(width,digits=c(0,0,0,rep(4,9)))
+xtable= xtable(width,digits=c(0,0,0,rep(3,9)))
 print(xtable, include.rownames = FALSE,sanitize.text.function = function(x) {x})
 ```
 

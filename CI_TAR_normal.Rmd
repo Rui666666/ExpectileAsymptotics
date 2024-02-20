@@ -20,17 +20,17 @@ library(xtable)
 library(rootSolve)
 ```
 
-TAR with normal and t(3) innovations
+TAR with normal innovations
 ```{r}
 alpha = 0.5 #parameter of TAR
 df_t = 3 #degree of freedom
 
-#simnlts = function(n, alpha, thr, sigma, burnin=100) # normal
-simnlts = function(n, alpha, thr, df, burnin=100) # t distribution
+simnlts = function(n, alpha, thr, sigma, burnin=100) # normal
+#simnlts = function(n, alpha, thr, df, burnin=100) # t distribution
 {
   # Generate noise
-  #e = rnorm(n+burnin, 0, sigma) #normal
-  e = rt(n+burnin, df)  #t distribution
+  e = rnorm(n+burnin, 0, sigma) #normal
+  #e = rt(n+burnin, df)  #t distribution
   
   # Create space for y
   y = numeric(n+burnin)
@@ -49,19 +49,45 @@ simnlts = function(n, alpha, thr, df, burnin=100) # t distribution
   # Return result
   return(y)
 }
+```
 
-## use a enough large sample to get true expectile
+
+```{r}
+#true value for TAR with normal innovation
+eq.sol=function(mu_tau, para)
+{
+  alpha = para[1]
+  tau = para[2]
+
+  density_TAR = function(x){
+    f_x = ((2*(1-alpha^2))/pi)^0.5*exp(-(1-alpha^2)*x^2/2)*pnorm(-alpha*x)
+    return(f_x)
+  }
+
+  inteq_TAR = function(y){
+    y*density_TAR(y)
+  }
+
+  inteq_TAR_posi = function(y){
+    (y-mu_tau)*density_TAR(y)
+  }
+
+  (2 * tau - 1)/(1-tau) * integrate(inteq_TAR_posi, mu_tau, Inf)$value + integrate(inteq_TAR, -Inf, Inf)$value - mu_tau
+}
 time_start = Sys.time()
-# expectile level
-tau_vec = seq(from = 0.1, to = 0.9, by = 0.1)
-set.seed(101)
-#sample_TAR = simnlts(100000000, alpha, thr = 0, sigma = 1) #normal
-sample_TAR = simnlts(100000000, alpha, thr = 0, df = df_t) #t distribution
-expectile_true = expectile(as.vector(sample_TAR), probs = tau_vec)
+## true value
+expectile_true_vec = rep(NA, length(tau_vec))
+for (i in 1:length(tau_vec)) {
+  tau = tau_vec[i]
+  find.para = multiroot(eq.sol, start = 0.001, para = c(alpha, tau))
+  expectile_true = find.para$root
+  expectile_true_vec[i] = expectile_true
+}
 time_end = Sys.time()
-time_dif = time_end - time_start
-time_dif
-expectile_true 
+time_dif_1 = time_end - time_start
+time_dif_1
+expectile_true = expectile_true_vec 
+expectile_true
 ```
 
 k-fold method
@@ -88,8 +114,8 @@ fold = function(k,N,Mrep){
     for (mrep in 1:Mrep) {
       set.seed(2*mrep + 1)
       #simulate process
-      #series = simnlts(round(N/k)*k, alpha, thr = 0, sigma = 1) #normal innovation
-      series = simnlts(round(N/k)*k, alpha, thr = 0, df = df_t) # t distribution
+      series = simnlts(round(N/k)*k, alpha, thr = 0, sigma = 1) #normal innovation
+      #series = simnlts(round(N/k)*k, alpha, thr = 0, df = df_t) # t distribution
       
       indx = rep(1:k,each = round(N/k))  
       series_list = split(series,indx)
